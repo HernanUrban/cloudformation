@@ -108,10 +108,5 @@ Resources:
         bastionInstanceType: !Ref BastionInstnaceType
         BastionSecurityGroup: !GetAtt SecurityGroups.Outputs.BastionSecurityGroup
         HostKeyPair: !Ref HostKeyPair
- 
-Outputs:
 
-  bastionHostEIP:
-    Description: Bastion IP
-    Value: !Ref bastionHostEIP
 
