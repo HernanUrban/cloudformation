@@ -1,0 +1,168 @@
+Description: >
+  EC2 Instance With a MYSQL RDS - 2018 template
+  Author: Hernan Urban <urbanhernan@gmail.com>
+
+Parameters:
+
+  HostKeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 KeyPair assigned to EC2 instances
+    Default: urban-kp
+
+  AppStorageSize:
+    Type: Number
+    Description: The size of the root volume for App Servers
+    Default: 20
+    MinValue: 8
+    MaxValue: 512
+
+  AppEnvironment:
+    Type: String
+    Description: Select Environment
+    Default: Prod
+    AllowedValues:
+      - Dev
+      - Test
+      - Prod
+
+  AppCountry:
+    Type: String
+    Description: Select Country
+    Default: AR
+    AllowedValues:
+      - AR
+      - US
+
+  BastionInstnaceType:
+    Type: String
+    Description: App Server instance type
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+
+  RDSInstanceType:
+    Type: String
+    Description: RDS Server instance type
+    Default: db.t2.micro
+    AllowedValues:
+      - db.t2.micro
+      - db.t2.medium
+      - db.t2.large
+      - db.m4.large
+      - db.r3.large
+
+  RDSDatabaseName:
+    Type: String
+    Description: RDS Database name
+    Default: urban2018
+
+  RDSUsername:
+    Type: String
+    Description: DB Username
+    Default: dbadmin
+    MinLength: 4
+    MaxLength: 128
+
+  RDSPassword:
+    Type: String
+    Description: DB Username password
+    # Use Parameter Store for passwords i.e.:"{{resolve:ssm-secure:ssbRDSmEcntl:1}}"
+    Default: Adm1nP4ss!
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    
+  DeploymentProcess:
+    Type: String
+    Description: Enable or Disable Deployment resources
+    Default: no
+    AllowedValues:
+      - yes
+      - no
+
+Mappings:
+
+  TemplateBucket:
+    url:
+      UrlBase: 'https://s3.us-east-1.amazonaws.com/cf-example-urban'
+
+Conditions:
+  DeploymentResources: !Equals [ !Ref DeploymentProcess, yes ]
+
+Resources:
+
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub
+        - ${Domain}/infrastructure/vpc.yaml
+        - { Domain: !FindInMap [ TemplateBucket, url, UrlBase ] }
+      Parameters:
+        EnvironmentName:    !Ref AWS::StackName
+        AppEnvironment: !Ref AppEnvironment
+        AppCountry: !Ref AppCountry
+        VpcCIDR:            10.180.0.0/16
+        PublicSubnet1CIDR:  10.180.8.0/21
+        PublicSubnet2CIDR:  10.180.16.0/21
+        PrivateSubnet1CIDR: 10.180.24.0/21
+        PrivateSubnet2CIDR: 10.180.32.0/21
+
+  SecurityGroups:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub
+        - ${Domain}/infrastructure/security-groups.yaml
+        - { Domain: !FindInMap [ TemplateBucket, url, UrlBase ] }
+      Parameters:
+        EnvironmentName:  !Ref AWS::StackName
+        AppEnvironment: !Ref AppEnvironment
+        AppCountry: !Ref AppCountry
+        VPC: !GetAtt VPC.Outputs.VPC
+
+  Bastion:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub
+        - ${Domain}/infrastructure/ec2.yaml
+        - { Domain: !FindInMap [ TemplateBucket, url, UrlBase ] }
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        AppEnvironment: !Ref AppEnvironment
+        AppCountry: !Ref AppCountry
+        VPC: !GetAtt VPC.Outputs.VPC
+        SubnetBastion: !GetAtt VPC.Outputs.PublicSubnet1
+        bastionInstanceType: !Ref BastionInstnaceType
+        BastionSecurityGroup: !GetAtt SecurityGroups.Outputs.BastionSecurityGroup
+        HostKeyPair: !Ref HostKeyPair
+
+  RDS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub
+        - ${Domain}/infrastructure/rds.yaml
+        - { Domain: !FindInMap [ TemplateBucket, url, UrlBase ] }
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        AppEnvironment: !Ref AppEnvironment
+        AppCountry: !Ref AppCountry
+        VPC: !GetAtt VPC.Outputs.VPC
+        DatabaseSize: 20
+        DatabaseInstanceType: !Ref RDSInstanceType
+        DatabaseEngineVersion: 5.7.17
+        DatabaseName: !Ref RDSDatabaseName
+        DatabaseUser: !Ref RDSUsername
+        DatabaseUserPassword: !Ref RDSPassword
+        BackupWindow: 05:00-07:00
+        BackupInterval: 24
+        RDSSecurityGroup: !GetAtt SecurityGroups.Outputs.RDSSecurityGroup
+        PrivateSubnets: !GetAtt VPC.Outputs.PrivateSubnets
+
+Outputs:
+  bastionHostEIP:
+    Description: Bastion IP
+    Value: !GetAtt Bastion.Outputs.bastionHostEIP
+  rdsEndpoint:
+    Description: A URL reference to the RDS
+    Value: !GetAtt RDS.Outputs.RDSEndpoint

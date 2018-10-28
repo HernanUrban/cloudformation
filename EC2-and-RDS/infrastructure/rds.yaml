@@ -1,0 +1,126 @@
+Description: >
+    Deploys a RDS MySql database
+
+Parameters:
+
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  AppEnvironment:
+    Type: String
+    Description: Environment type.
+
+  AppCountry:
+    Type: String
+    Description: Country.
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose which VPC the Applicaion Load Balancer should be deployed to
+
+  DatabaseSize:
+    Type: Number
+    Description: The size of the database volume in GB
+    Default: 100
+    MinValue: 8
+    MaxValue: 512
+
+  DatabaseInstanceType:
+    Type: String
+    Description: Database instance type
+    Default: db.m4.large
+
+  DatabaseEngineVersion:
+    Type: String
+    Description: Enter the specific engine version if you require one.
+    Default: 5.7.17
+
+  DatabaseName:
+    Type: String
+    Description: Database name.
+    Default: mysqldb
+
+  DatabaseUser:
+    Type: String
+    Description: The database admin account username.
+    Default: dbadmin
+    MinLength: 4
+    MaxLength: 128
+    #AllowedPattern: [a-zA-Z][a-zA-Z0-9]*
+
+  DatabaseUserPassword:
+    Type: String
+    Description: The database admin account password. Adm1n1str8?
+    Default: Adm1n1str8?
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    #AllowedPattern: [^/@\" ]{8,41}
+
+  BackupWindow:
+    Type: String
+    Description: The daily backup window (in UTC) to apply to RDS and ElastiCache Redis clusters (must follow the pattern hh24:mi-hh24:mi).
+    Default: 05:00-07:00
+
+  BackupInterval:
+    Type: String
+    Description: Choose how often backups will occur (every X hours)
+    Default: 24
+
+  RDSSecurityGroup:
+    Description: Select the Security Group to apply to RDS DB
+    Type: AWS::EC2::SecurityGroup::Id
+
+  PrivateSubnets:
+    Description: Choose which private subnets the Applicaion Load Balancer should be deployed to
+    Type: List<AWS::EC2::Subnet::Id>
+
+Resources:
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets available for the RDS DB Instance
+      SubnetIds: !Ref PrivateSubnets
+
+  DBMySQL:
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+      - DBSubnetGroup
+    Properties:
+      DBName: !Ref DatabaseName
+      Engine: MySQL
+      AllocatedStorage: !Ref DatabaseSize
+      DBInstanceClass: !Ref DatabaseInstanceType
+      EngineVersion: !Ref DatabaseEngineVersion
+      MultiAZ: true
+      StorageType: gp2
+      MasterUsername: !Ref DatabaseUser
+      MasterUserPassword: !Ref DatabaseUserPassword
+      BackupRetentionPeriod: 15
+      PreferredBackupWindow: !Ref BackupWindow
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AppCountry}-${AppEnvironment}-MYSql-${EnvironmentName}
+        - Key: Country
+          Value: !Ref AppCountry
+        - Key: EnvType
+          Value: !Ref AppEnvironment
+
+Outputs:
+
+  RDSDatabase:
+    Description: A reference to the RDS Database
+    Value: !Ref DBMySQL
+
+  RDSEndpoint:
+    Description: A URL reference to the RDS
+    Value: !GetAtt DBMySQL.Endpoint.Address
+
+  RDSPort:
+    Description: Port reference to the RDS
+    Value: !GetAtt DBMySQL.Endpoint.Port

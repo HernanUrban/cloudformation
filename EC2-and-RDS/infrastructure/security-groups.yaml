@@ -1,0 +1,73 @@
+Description: >
+  Define Security Groups
+
+Parameters:
+
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  AppEnvironment:
+    Type: String
+    Description: Environment type.
+
+  AppCountry:
+    Type: String
+    Description: Country.
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose which VPC the security groups should be deployed to
+
+
+Resources:
+
+  # This security group defines who/where is allowed to access the EC2 hosts directly.
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Access to the EC2 hosts
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AppCountry}-${AppEnvironment}-Bastion-${EnvironmentName}
+        - Key: Country
+          Value: !Ref AppCountry
+        - Key: EnvType
+          Value: !Ref AppEnvironment
+
+  # Defines RDS Security Group adding EC2 instances and bastion host.
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: RDS MySQL App Access
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref EC2SecurityGroup
+          IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+      Tags:
+        - Key: Name
+          Value: !Sub ${AppCountry}-${AppEnvironment}-RDS-${EnvironmentName}
+        - Key: Country
+          Value: !Ref AppCountry
+        - Key: EnvType
+          Value: !Ref AppEnvironment
+
+Outputs:
+  BastionSecurityGroup:
+    Description: A reference to the security group for Bastion
+    Value: !Ref EC2SecurityGroup
+  RDSSecurityGroup:
+    Description: A reference to the security group for RDS
+    Value: !Ref RDSSecurityGroup
